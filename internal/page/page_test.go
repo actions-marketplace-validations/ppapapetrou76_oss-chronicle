@@ -128,6 +128,19 @@ func TestRenderEmptyLedger(t *testing.T) {
 	}
 }
 
+// TestDarkThemeMatchesDarkScheme checks that a page told data-theme="dark" by the site embedding it
+// gets the same colors as a reader whose system is set to dark.
+func TestDarkThemeMatchesDarkScheme(t *testing.T) {
+	scheme := regexp.MustCompile(`@media \(prefers-color-scheme: dark\) \{\s*:root:not\(\[data-theme="light"\]\) \{([^}]*)\}`).FindStringSubmatch(source)
+	theme := regexp.MustCompile(`:root\[data-theme="dark"\] \{([^}]*)\}`).FindStringSubmatch(source)
+	if scheme == nil || theme == nil {
+		t.Fatalf("dark colors not found: media block %v, data-theme block %v", scheme != nil, theme != nil)
+	}
+	if strings.Join(strings.Fields(scheme[1]), " ") != strings.Join(strings.Fields(theme[1]), " ") {
+		t.Errorf("data-theme=\"dark\" colors differ from the dark scheme:\n%s\n%s", strings.TrimSpace(theme[1]), strings.TrimSpace(scheme[1]))
+	}
+}
+
 // TestPageScript checks the page's JavaScript parses and that its duration and percentage
 // formatting match the Markdown summary. It needs node, which GitHub runners have.
 func TestPageScript(t *testing.T) {
