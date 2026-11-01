@@ -69,16 +69,66 @@ The pattern is the same for every docs tool: run oss-chronicle in its own job, t
 
 ### MkDocs
 
-Copy the folder to `docs/contributors/` and add it to the nav. MkDocs copies HTML files in `docs/` unchanged, and a nav entry may point at one:
+Copy the folder to `docs/assets/contributors/` and show it through a Markdown page that embeds it, so it appears inside your theme with your navigation around it:
 
 ```yaml
 # mkdocs.yml
 nav:
   - Home: index.md
-  - Contributors: contributors/index.html
+  - Contributors: contributors.md
 ```
 
-From a Markdown page, link to it as `[contributors](contributors/index.html)`. Both links work with `mkdocs build --strict`.
+`docs/contributors.md`:
+
+```markdown
+---
+hide:
+  - toc
+---
+
+# Contributors
+
+<iframe id="contributors-page" src="../assets/contributors/" title="Contributors" style="width: 100%; min-height: 600px; border: 0;"></iframe>
+
+<script>
+(() => {
+  const frame = document.getElementById("contributors-page");
+  const theme = () => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    doc.documentElement.setAttribute("data-theme", document.body.getAttribute("data-md-color-scheme") === "slate" ? "dark" : "light");
+  };
+  new MutationObserver(theme).observe(document.body, {attributes: true, attributeFilter: ["data-md-color-scheme"]});
+  frame.addEventListener("load", () => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const fit = () => { frame.style.height = Math.ceil(doc.documentElement.getBoundingClientRect().height) + "px"; };
+    new frame.contentWindow.ResizeObserver(fit).observe(doc.documentElement);
+    fit();
+    theme();
+    history.replaceState(null, "", location.pathname + frame.contentWindow.location.search + location.hash);
+    doc.addEventListener("click", (e) => {
+      const a = e.target.closest("a[href]");
+      if (a && a.origin !== location.origin) a.target = "_top";
+    });
+  });
+  if (location.search) frame.src = "../assets/contributors/" + location.search;
+})();
+</script>
+```
+
+The script:
+
+- sets the frame's height to the page's, so readers see one scroll bar, not two;
+- switches the page between light and dark with the Material theme's toggle (see [Light and dark](#light-and-dark));
+- keeps the chosen period in the docs address, so a link to `contributors/?period=last-quarter` opens on that period;
+- opens links to other sites in the whole window, not inside the frame.
+
+`hide: toc` removes Material's table of contents sidebar, which is empty on this page, and gives the tables more room.
+
+Don't copy the files to `docs/contributors/`: MkDocs builds `contributors.md` and `contributors/index.html` to the same address, and `--strict` doesn't warn about it. The `src` paths assume MkDocs' default directory URLs, where `contributors.md` is served at `contributors/`. With a theme other than Material, remove the `hide` front matter, the `theme` function and its calls; the page then follows the reader's system setting.
+
+To show the page on its own, without your theme, point the nav at the file instead: `- Contributors: assets/contributors/index.html`. MkDocs copies HTML files in `docs/` unchanged.
 
 A complete workflow that builds an MkDocs site and publishes it to GitHub Pages:
 
@@ -116,8 +166,9 @@ jobs:
           python-version: '3.x'
       - run: pip install mkdocs-material
       - run: |
-          rm -rf docs/contributors
-          cp -R "$RUNNER_TEMP/chronicle/site" docs/contributors
+          rm -rf docs/assets/contributors
+          mkdir -p docs/assets
+          cp -R "$RUNNER_TEMP/chronicle/site" docs/assets/contributors
       - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v5
         with:
@@ -136,7 +187,11 @@ jobs:
         id: deploy
 ```
 
-Add `docs/contributors/` to `.gitignore` so nobody commits a stale copy. The ledger job runs on every push to `main` as well as on the schedule; on a large repository it takes several minutes (see [Getting started](getting-started.md#2-run-it)).
+Add `docs/assets/contributors/` to `.gitignore` so nobody commits a stale copy. The ledger job runs on every push to `main` as well as on the schedule; on a large repository it takes several minutes (see [Getting started](getting-started.md#2-run-it)).
+
+### Light and dark
+
+The page follows the reader's system setting. A site that embeds it can choose instead by setting `data-theme` on the page's root element: `data-theme="light"` or `data-theme="dark"` forces that scheme, and removing the attribute goes back to the system setting. The MkDocs page above does this from the Material theme's toggle. A script on the embedding page can reach the page through the frame's `contentDocument`, because both are served from the same site.
 
 ### Docusaurus
 
@@ -152,7 +207,7 @@ In Markdown pages, write `[contributors](pathname:///contributors/)`. Docusaurus
 > [!IMPORTANT]
 > A plain `to: '/contributors/'` link fails the build with "Docusaurus found broken links", because Docusaurus checks links against its own pages.
 
-In the workflow above, replace the Python steps with your Node setup and build, and copy to `static/contributors` instead of `docs/contributors`.
+In the workflow above, replace the Python steps with your Node setup and build, and copy to `static/contributors` instead of `docs/assets/contributors`.
 
 ### Other static site generators
 
@@ -160,13 +215,13 @@ Each generator has a place for files it copies unchanged: `static/` for Hugo, an
 
 ### Docs built outside GitHub Actions (Read the Docs, Netlify)
 
-Read the Docs, Netlify and similar services build from your repository and cannot reach a workflow's artifacts, so the page has to be committed. This workflow runs oss-chronicle once a week and opens a pull request that updates `docs/contributors/`. Merging it publishes the page with your next docs build.
+Read the Docs, Netlify and similar services build from your repository and cannot reach a workflow's artifacts, so the page has to be committed. This workflow runs oss-chronicle once a week and opens a pull request that updates `docs/assets/contributors/`. Merging it publishes the page with your next docs build.
 
 Before the first run:
 
 - **Let workflows open pull requests:** turn on **Settings › Actions › General › Allow GitHub Actions to create and approve pull requests**. Organizations can lock this setting; ask an organization owner, or use a GitHub App token instead of `github.token` (see below; not tested yet).
-- **Add the page to your docs.** For MkDocs, add `- Contributors: contributors/index.html` to the nav, as in the [MkDocs](#mkdocs) section. For Sphinx, copy to a folder listed in `html_extra_path` instead of `docs/contributors` (not tested yet). GitHub Pages sites built from a branch with Jekyll need nothing: the page has no front matter, so Jekyll publishes it unchanged (at `contributors/` instead if the site is built from the `docs` folder).
-- **Remove `docs/contributors/` from `.gitignore`** if you added it for the Actions recipes. The workflow adds the files with `--force`, but an ignored folder confuses people editing it locally.
+- **Add the page to your docs.** For MkDocs, add the embedding page and nav entry from the [MkDocs](#mkdocs) section. For Sphinx, copy to a folder listed in `html_extra_path` instead of `docs/assets/contributors` (not tested yet). GitHub Pages sites built from a branch with Jekyll need nothing: the page has no front matter, so Jekyll publishes it unchanged (at `contributors/` instead if the site is built from the `docs` folder).
+- **Remove the page's folder from `.gitignore`** if you added it for the Actions recipes. The workflow adds the files with `--force`, but an ignored folder confuses people editing it locally.
 
 ```yaml
 name: Contributors page
@@ -209,9 +264,9 @@ jobs:
           path: ${{ runner.temp }}/chronicle
       - name: Copy the page
         run: |
-          mkdir -p docs/contributors
-          cp "$RUNNER_TEMP/chronicle/site/index.html" "$RUNNER_TEMP/chronicle/site/ledger.json" docs/contributors/
-          git add --force docs/contributors/index.html docs/contributors/ledger.json
+          mkdir -p docs/assets/contributors
+          cp "$RUNNER_TEMP/chronicle/site/index.html" "$RUNNER_TEMP/chronicle/site/ledger.json" docs/assets/contributors/
+          git add --force docs/assets/contributors/index.html docs/assets/contributors/ledger.json
       - name: Open or update the pull request
         run: |
           if git diff --cached --quiet -I 'Generated by <a'; then
@@ -222,14 +277,14 @@ jobs:
           if git fetch --quiet --depth=1 origin "$BRANCH" 2>/dev/null; then
             branch_exists=true
           fi
-          if [[ -n "${branch_exists:-}" ]] && git diff --cached --quiet -I 'Generated by <a' FETCH_HEAD -- docs/contributors; then
+          if [[ -n "${branch_exists:-}" ]] && git diff --cached --quiet -I 'Generated by <a' FETCH_HEAD -- docs/assets/contributors; then
             echo "The pull request branch already has this page."
           else
             tree=$(jq --null-input --arg base "$(git rev-parse 'HEAD^{tree}')" \
-                --rawfile html docs/contributors/index.html --rawfile ledger docs/contributors/ledger.json \
+                --rawfile html docs/assets/contributors/index.html --rawfile ledger docs/assets/contributors/ledger.json \
                 '{base_tree: $base, tree: [
-                  {path: "docs/contributors/index.html", mode: "100644", type: "blob", content: $html},
-                  {path: "docs/contributors/ledger.json", mode: "100644", type: "blob", content: $ledger}]}' |
+                  {path: "docs/assets/contributors/index.html", mode: "100644", type: "blob", content: $html},
+                  {path: "docs/assets/contributors/ledger.json", mode: "100644", type: "blob", content: $ledger}]}' |
               gh api "repos/$GITHUB_REPOSITORY/git/trees" --input - --jq .sha)
             commit=$(jq --null-input --arg tree "$tree" --arg parent "$(git rev-parse HEAD)" \
                 --arg message $'docs: update the contributors page\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' \
@@ -260,7 +315,7 @@ How it behaves:
 > [!WARNING]
 > Pull requests opened or updated with `github.token` do not start other workflows, so required checks run by GitHub Actions stay pending and block the merge. Closing and reopening the pull request starts them for its current commit; the next weekly update leaves them pending again. To avoid that, create the pull request with a [GitHub App token](https://github.com/actions/create-github-app-token) instead: generate it in the `propose` job and set `GH_TOKEN` to it. Commits made with an App token are authored by the App's bot account, so change the `Signed-off-by` line to match it. Checks from outside services can still run: CircleCI ran on the workflow's pull request in testing.
 
-The workflow was tested on GitHub with an MkDocs build of its branch, and on a public repository whose GitHub Pages site is built by Jekyll from the default branch, where merging the pull request published the page. That repository requires signed commits, and GitHub reported the workflow's commit as signed and valid. Its pull request was merged with an administrator override, because the repository's other required checks fail or never report, so it is not yet shown that a branch requiring signed commits accepts the merge. A Read the Docs or Netlify build of the merged page was not tested. Read the Docs builds every version from its own branch or tag. Only the version built from the default branch, usually `latest`, gets the weekly updates; a release branch keeps the page as it was when the branch was cut.
+The workflow was tested on GitHub with an MkDocs build of its branch, and on a public repository whose GitHub Pages site is built by Jekyll from the default branch, where merging the pull request published the page. That repository requires signed commits, and GitHub reported the workflow's commit as signed and valid. Its pull request was merged with an administrator override, because the repository's other required checks fail or never report, so it is not yet shown that a branch requiring signed commits accepts the merge. A Read the Docs build of the merged page, embedded as in the [MkDocs](#mkdocs) section, has been checked; a Netlify build has not. Read the Docs builds every version from its own branch or tag. Only the version built from the default branch, usually `latest`, gets the weekly updates; a release branch keeps the page as it was when the branch was cut.
 
 ## Linking to a period
 
